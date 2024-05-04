@@ -6,11 +6,12 @@
 #define DHT_TYPE DHT11
 #define MOTOR_PIN 2  // Pin for motor control
 #define TRIG_PIN 12 
-#define ECHO_PIN 11 // defines variables 
+#define ECHO_PIN 11 
+#define ALARM_PIN 7 
 
+// defines variables 
 long duration; 
 int distance; 
-
 
 DHT dht(DHT_PIN, DHT_TYPE);
 
@@ -23,10 +24,13 @@ void HC_SR04(void *pvParameters){
 
   pinMode(TRIG_PIN, OUTPUT); // Sets the trigPin as an Output 
   pinMode(ECHO_PIN, INPUT); // Sets the echoPin as an Input 
+  pinMode(ALARM_PIN, OUTPUT);// Sets the alarmPin as an Output 
 
-  if (xSemaphoreTake(xHC_SR04Semaphore, portMAX_DELAY) == pdTRUE) {
+  if (xSemaphoreTake(xHC_SR04Semaphore, portMAX_DELAY) == pdTRUE) 
+  {
     for(;;)
     {
+      digitalWrite(ALARM_PIN, LOW);
       digitalWrite(TRIG_PIN, LOW); 
       delayMicroseconds(2); // Sets the trigPin on HIGH state for 10 micro seconds 
       digitalWrite(TRIG_PIN, HIGH); 
@@ -36,9 +40,12 @@ void HC_SR04(void *pvParameters){
       distance = duration * 0.034 / 2; // Prints the distance on the Serial Monitor 
       Serial.print("Distance: "); 
       Serial.println(distance);
-  
-      // Wait for 3 seconds
-      vTaskDelay(3000 / portTICK_PERIOD_MS);
+      // If temperature exceeds 28°C, notify the motor control task
+      if (distance < 7) 
+      {
+        digitalWrite(ALARM_PIN, HIGH); 
+      }
+      vTaskDelay(500 / portTICK_PERIOD_MS); // Wait for 0.5 seconds
       xSemaphoreGive(xDHT11Semaphore);
     }
   } 
@@ -47,8 +54,10 @@ void HC_SR04(void *pvParameters){
 void readDHTTask(void *pvParameters) {
   (void) pvParameters;
   
-  if (xSemaphoreTake(xDHT11Semaphore, portMAX_DELAY) == pdTRUE) {
-    for (;;) {
+  if (xSemaphoreTake(xDHT11Semaphore, portMAX_DELAY) == pdTRUE) 
+  {
+    for (;;) 
+    {
       // Reading data from the sensor
       dht.read();
       // Check data state
@@ -66,7 +75,8 @@ void readDHTTask(void *pvParameters) {
           Serial.print(dht.getHumidity());
           Serial.println(" %");
           // If temperature exceeds 28°C, notify the motor control task
-          if (dht.getTemperatureC() > 28) {
+          if (dht.getTemperatureC() > 28) 
+          {
             xTaskNotify(controlMotorTask_Handle, 1, eSetValueWithOverwrite);
           }
           break;
